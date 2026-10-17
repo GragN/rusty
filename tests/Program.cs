@@ -18,6 +18,16 @@ Check(elements.Select(s => s.Symbol).Distinct().Count() == 118, "Символы 
 Check(elements.Single(s => s.AtomicNumber == 1).Symbol == "H" && elements.Single(s => s.AtomicNumber == 118).Symbol == "Og", "От водорода до оганесона");
 Check(elements.Single(s => s.AtomicNumber == 26).Id == "fe" && elements.Single(s => s.AtomicNumber == 79).Symbol == "Au", "Железо и золото имеют правильные номера");
 Check(engine.Substances.All(s => s.Column is "elements" or "discoveries"), "В каталоге ровно две группы");
+Check(engine.Substances.Count(s => s.Column == "discoveries") >= 2000, "Каталог содержит более двух тысяч соединений");
+Check(engine.Reactions.Count >= 7000, "Каталог содержит более семи тысяч вариантов реакций");
+Check(engine.Reactions.Select(r => r.Id).Distinct().Count() == engine.Reactions.Count, "Идентификаторы вариантов уникальны");
+Check(engine.Substances.Select(s => s.Id).Distinct().Count() == engine.Substances.Count, "Идентификаторы веществ уникальны, CO не путается с Co");
+Check(engine.Substances.Count(s => s.Family == "Сложные эфиры") == 900, "900 сложных эфиров в матрице C1–C30");
+Check(engine.Substances.Count(s => s.MolecularFormula == "C3H6O2") >= 3, "Изомеры с одинаковой молекулярной формулой не объединяются");
+Check(!engine.Substances.Any(s => s.Formula is "FeI3" or "CuI2" or "Al2(CO3)3"), "Исключены неустойчивые и окислительно-восстановительные комбинации");
+Check(engine.FindAll("co2", "h2o").Count >= 2, "Одна пара поддерживает угольную кислоту и фотосинтез при разных условиях");
+Check(engine.Find("cu", "hcl") is null, "Медь не вытесняет водород из соляной кислоты");
+Check(engine.Reactions.Any(r => r.Model == "curated") && engine.Reactions.Any(r => r.Model == "template"), "Справочные реакции и модели классов отмечены отдельно");
 Check(new[] { "h2o", "hcl", "h2so4", "naoh", "co2", "cuso4", "nacl" }.All(id => engine.Get(id).Column == "discoveries"), "Сложные вещества находятся только среди продуктов реакций");
 foreach (var element in elements)
 {
@@ -42,10 +52,11 @@ Check(engine.Find("missing", "o2") is null && !engine.Contains("missing"), "Не
 foreach (var reaction in engine.Reactions)
 {
     var label = reaction.Equation;
-    Check(ReferenceEquals(reaction, engine.Find(reaction.Reactants[0], reaction.Reactants[1])), $"Прямой поиск: {label}");
-    Check(ReferenceEquals(reaction, engine.Find(reaction.Reactants[1], reaction.Reactants[0])), $"Порядок не важен: {label}");
+    Check(engine.FindAll(reaction.Reactants[0], reaction.Reactants[1]).Contains(reaction), $"Прямой поиск варианта: {label}");
+    Check(engine.FindAll(reaction.Reactants[1], reaction.Reactants[0]).Contains(reaction), $"Порядок не важен: {label}");
     Check(reaction.Reactants.Concat(reaction.Products).All(engine.Contains), $"Все вещества существуют: {label}");
     Check(!string.IsNullOrWhiteSpace(reaction.Condition) && !string.IsNullOrWhiteSpace(reaction.Description), $"Указаны условия и описание: {label}");
+    Check(reaction.Id.Length == 16 && reaction.Model is "curated" or "template", $"Указаны идентификатор варианта и тип модели: {label}");
     var sides = Regex.Split(label, "[→⇌]");
     var left = ParseSide(sides[0]);
     var right = ParseSide(sides[1]);

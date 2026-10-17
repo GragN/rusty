@@ -1,21 +1,26 @@
 namespace Grenade.Domain;
 
 public sealed record Substance(string Id, string Formula, string Name, string Category, string Column,
-    int? AtomicNumber = null, string? Symbol = null);
+    int? AtomicNumber = null, string? Symbol = null, string? Family = null, string? MolecularFormula = null);
 
-public sealed record Reaction(string[] Reactants, string[] Products, string Equation, string Condition, string Description);
+public sealed record Reaction(string[] Reactants, string[] Products, string Equation, string Condition, string Description,
+    string Model = "curated", string? Family = null, string Id = "");
 
 public sealed class ReactionEngine
 {
-    public IReadOnlyList<Substance> Substances { get; } = ChemistryCatalog.Substances;
-    public IReadOnlyList<Reaction> Reactions { get; } = ChemistryCatalog.Reactions;
+    public IReadOnlyList<Substance> Substances { get; }
+    public IReadOnlyList<Reaction> Reactions { get; }
     private readonly Dictionary<string, Substance> substances;
-    private readonly Dictionary<string, Reaction> reactions;
+    private readonly Dictionary<string, Reaction[]> reactions;
 
     public ReactionEngine()
     {
+        var catalog = ExpandedChemistry.Build();
+        Substances = catalog.Substances;
+        Reactions = catalog.Reactions;
         substances = Substances.ToDictionary(s => s.Id, StringComparer.Ordinal);
-        reactions = Reactions.ToDictionary(r => Key(r.Reactants[0], r.Reactants[1]), StringComparer.Ordinal);
+        reactions = Reactions.GroupBy(r => Key(r.Reactants[0], r.Reactants[1]))
+            .ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.Ordinal);
         foreach (var reaction in Reactions)
         {
             if (reaction.Reactants.Length != 2 || reaction.Products.Length == 0
@@ -28,7 +33,8 @@ public sealed class ReactionEngine
 
     public bool Contains(string id) => substances.ContainsKey(id);
     public Substance Get(string id) => substances[id];
-    public Reaction? Find(string first, string second) => reactions.GetValueOrDefault(Key(first, second));
+    public IReadOnlyList<Reaction> FindAll(string first, string second) => reactions.GetValueOrDefault(Key(first, second)) ?? [];
+    public Reaction? Find(string first, string second) => FindAll(first, second).FirstOrDefault();
     private static string Key(string first, string second) => string.CompareOrdinal(first, second) <= 0
         ? $"{first}|{second}" : $"{second}|{first}";
 }
