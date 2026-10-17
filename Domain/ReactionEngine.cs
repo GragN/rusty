@@ -1,6 +1,7 @@
 namespace Grenade.Domain;
 
-public sealed record Substance(string Id, string Formula, string Name, string Category, string Column);
+public sealed record Substance(string Id, string Formula, string Name, string Category, string Column,
+    int? AtomicNumber = null, string? Symbol = null);
 
 public sealed record Reaction(string[] Reactants, string[] Products, string Equation, string Condition, string Description);
 

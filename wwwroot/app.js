@@ -1,6 +1,7 @@
 const $ = (selector) => document.querySelector(selector);
 const STORAGE_KEY = 'reaktiv.lab.v1';
-const categoryNames = { metal: 'Металл', nonmetal: 'Неметалл', gas: 'Газ', liquid: 'Жидкость', acid: 'Кислота', base: 'Основание', salt: 'Соль', oxide: 'Оксид' };
+const categoryNames = { metal: 'Металл', nonmetal: 'Неметалл', metalloid: 'Полуметалл', 'noble-gas': 'Благородный газ', gas: 'Газ', liquid: 'Жидкость', acid: 'Кислота', base: 'Основание', salt: 'Соль', oxide: 'Оксид' };
+const columns = ['elements', 'discoveries'];
 let catalog = [], reactions = [], byId = new Map(), reactionByPair = new Map();
 let discoveries = new Set(), history = [], selected = [null, null], activeSlot = 0, busy = false, loaded = false, toastTimer;
 let possibleProducts = new Set();
@@ -43,15 +44,18 @@ function updateConnection(online) {
 
 function card(substance, index, newIds) {
   const isSelected = selected.includes(substance.id);
-  return `<button class="substance-card${isSelected ? ' selected' : ''}${newIds.has(substance.id) ? ' new-card' : ''}" data-id="${escapeHtml(substance.id)}" data-category="${escapeHtml(substance.category)}" draggable="true" aria-pressed="${isSelected}" aria-label="${escapeHtml(substance.name)}, ${escapeHtml(substance.formula)}">
-    <span class="card-top"><span class="category-dot"></span>${isSelected ? '<span class="card-check"><svg class="icon"><use href="#i-check"/></svg></span>' : `<span class="card-index">${String(index + 1).padStart(2, '0')}</span>`}</span>
-    <span class="card-formula">${chemistry(substance.formula)}</span><span class="card-name">${escapeHtml(substance.name)}</span><span class="card-category">${categoryNames[substance.category]}</span></button>`;
+  const label = substance.atomicNumber
+    ? `${substance.name}, ${substance.symbol}, атомный номер ${substance.atomicNumber}, простое вещество ${substance.formula}`
+    : `${substance.name}, ${substance.formula}`;
+  return `<button class="substance-card${isSelected ? ' selected' : ''}${newIds.has(substance.id) ? ' new-card' : ''}" data-id="${escapeHtml(substance.id)}" data-category="${escapeHtml(substance.category)}" draggable="true" aria-pressed="${isSelected}" aria-label="${escapeHtml(label)}">
+    <span class="card-top"><span class="card-index">${substance.atomicNumber ?? String(index + 1).padStart(2, '0')}</span>${isSelected ? '<span class="card-check"><svg class="icon"><use href="#i-check"/></svg></span>' : '<span class="category-dot"></span>'}</span>
+    <span class="card-formula">${chemistry(substance.symbol ?? substance.formula)}</span><span class="card-name">${escapeHtml(substance.name)}</span><span class="card-category">${categoryNames[substance.category]}${substance.symbol && substance.symbol !== substance.formula ? ` · ${chemistry(substance.formula)}` : ''}</span></button>`;
 }
 
 function renderLists(newIds = new Set()) {
   const query = normalize($('#search').value), category = $('#category').value;
-  const matches = (s) => (!query || normalize(s.name + s.formula).includes(query)) && (category === 'all' || s.category === category);
-  for (const column of ['elements', 'reagents', 'discoveries']) {
+  const matches = (s) => (!query || (/^\d+$/.test(query) ? String(s.atomicNumber) === query : normalize(s.name + s.formula + (s.symbol ?? '')).includes(query))) && (category === 'all' || s.category === category);
+  for (const column of columns) {
     const all = column === 'discoveries' ? [...discoveries].map((id) => byId.get(id)) : catalog.filter((s) => s.column === column);
     const shown = all.filter(matches), list = $(`#${column}-list`), previousScroll = list.scrollTop;
     $(`#${column}-count`).textContent = query || category !== 'all' ? `${shown.length}/${all.length}` : all.length;
@@ -64,7 +68,7 @@ function renderLists(newIds = new Set()) {
     }
     list.scrollTop = previousScroll;
   }
-  $('#total-count').textContent = `${catalog.filter((s) => s.column !== 'discoveries').length} исходных`;
+  $('#total-count').textContent = `${catalog.filter((s) => s.column === 'elements').length} элементов`;
   const count = discoveries.size;
   $('#progress-label').textContent = count ? `Получено ${count} из ${possibleProducts.size} веществ` : 'Всё начинается с первого открытия';
   $('#progress-bar').style.width = `${possibleProducts.size ? count / possibleProducts.size * 100 : 0}%`;
@@ -166,12 +170,13 @@ function openBook() { renderBook(); $('#book-dialog').showModal(); }
 function renderHistory() {
   $('#history-list').innerHTML = history.length ? history.map((entry) => {
     const reaction = reactionByPair.get(pairKey(entry.reactants));
+    const ready = entry.reactants.every(available);
     const date = new Date(entry.at).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-    return `<article class="recipe"><div class="recipe-equation">${chemistry(reaction.equation)}</div><p>${escapeHtml(reaction.description)}</p><div class="recipe-footer"><span class="history-time">${escapeHtml(date)}</span><button data-pair="${escapeHtml(entry.reactants.join('|'))}" ${busy ? 'disabled' : ''}>Повторить →</button></div></article>`;
+    return `<article class="recipe"><div class="recipe-equation">${chemistry(reaction.equation)}</div><p>${escapeHtml(reaction.description)}</p><div class="recipe-footer"><span class="history-time">${escapeHtml(date)}</span><button data-pair="${escapeHtml(entry.reactants.join('|'))}" ${ready && !busy ? '' : 'disabled'}>${ready ? 'Повторить →' : 'Сначала получите реагенты'}</button></div></article>`;
   }).join('') : '<div class="empty-state"><div class="empty-illustration"><svg class="icon"><use href="#i-clock"/></svg></div><strong>Первый эксперимент ещё впереди</strong><p>Смешайте два вещества — успешная реакция появится в вашем журнале.</p></div>';
 }
 
-for (const column of ['elements', 'reagents', 'discoveries']) {
+for (const column of columns) {
   const list = $(`#${column}-list`);
   list.addEventListener('click', (event) => {
     const button = event.target.closest('[data-id]');

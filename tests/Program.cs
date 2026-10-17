@@ -11,14 +11,30 @@ void Check(bool condition, string description)
     if (!condition) failures.Add(description);
 }
 
+var elements = engine.Substances.Where(s => s.Column == "elements").ToArray();
+Check(elements.Length == 118, "В первом столбце все 118 элементов");
+Check(elements.Select(s => s.AtomicNumber ?? 0).SequenceEqual(Enumerable.Range(1, 118)), "Атомные номера от 1 до 118 без пропусков, в порядке возрастания");
+Check(elements.Select(s => s.Symbol).Distinct().Count() == 118, "Символы элементов не повторяются");
+Check(elements.Single(s => s.AtomicNumber == 1).Symbol == "H" && elements.Single(s => s.AtomicNumber == 118).Symbol == "Og", "От водорода до оганесона");
+Check(elements.Single(s => s.AtomicNumber == 26).Id == "fe" && elements.Single(s => s.AtomicNumber == 79).Symbol == "Au", "Железо и золото имеют правильные номера");
+Check(engine.Substances.All(s => s.Column is "elements" or "discoveries"), "В каталоге ровно две группы");
+Check(new[] { "h2o", "hcl", "h2so4", "naoh", "co2", "cuso4", "nacl" }.All(id => engine.Get(id).Column == "discoveries"), "Сложные вещества находятся только среди продуктов реакций");
+foreach (var element in elements)
+{
+    var position = 0;
+    var atoms = ParseGroup(element.Formula, ref position);
+    Check(position == element.Formula.Length && atoms.Count == 1 && atoms.ContainsKey(element.Symbol!), $"Первый столбец содержит простое вещество: {element.Name}");
+}
+
 Check(engine.Find("fe", "o2")?.Products.SequenceEqual(["fe2o3"]) == true, "Железо + кислород → оксид железа(III)");
 Check(engine.Find("fe2o3", "fe")?.Products.SequenceEqual(["feo"]) == true, "Повторное использование открытия: Fe2O3 + Fe → FeO");
-Check(engine.Find("cao", "h2o")?.Products.SequenceEqual(["caoh2"]) == true, "Третий столбец + второй столбец");
-Check(engine.Find("fe2o3", "al")?.Products.Contains("fe") == true, "Третий столбец + первый столбец");
+Check(engine.Find("cao", "h2o")?.Products.SequenceEqual(["caoh2"]) == true, "Два вещества из столбца продуктов");
+Check(engine.Find("fe2o3", "al")?.Products.Contains("fe") == true, "Второй столбец + первый столбец");
 Check(engine.Find("caoh2", "hcl")?.Products.Contains("cacl2") == true, "Повторная цепочка реакций");
 Check(engine.Find("fe", "s")?.Products.Contains("fes") == true, "Смешивание внутри первого столбца");
-Check(engine.Find("h2", "o2")?.Products.Contains("h2o") == true, "Смешивание внутри второго столбца");
-Check(engine.Find("cao", "sio2")?.Products.SequenceEqual(["casio3"]) == true, "Смешивание двух открытий внутри третьего столбца");
+Check(engine.Find("h2", "o2")?.Products.Contains("h2o") == true, "Водород и кислород из первого столбца");
+Check(engine.Find("cao", "sio2")?.Products.SequenceEqual(["casio3"]) == true, "Смешивание двух открытий внутри второго столбца");
+Check(engine.Find("so2", "o2")?.Products.SequenceEqual(["so3"]) == true && engine.Find("so3", "h2o")?.Products.SequenceEqual(["h2so4"]) == true, "Серную кислоту можно получить цепочкой из простых веществ");
 Check(engine.Find("fe", "cu") is null, "Неизвестная пара не создаёт вымышленный продукт");
 Check(engine.Find("fe", "fe") is null, "Смешивание одинаковых веществ не создаёт продукт");
 Check(engine.Find("missing", "o2") is null && !engine.Contains("missing"), "Неизвестный ID обрабатывается корректно");
@@ -38,7 +54,7 @@ foreach (var reaction in engine.Reactions)
     Check(Formulas(sides[1]).Order().SequenceEqual(reaction.Products.Select(id => engine.Get(id).Formula).Order()), $"Продукты соответствуют уравнению: {label}");
 }
 
-var reachable = engine.Substances.Where(s => s.Column != "discoveries").Select(s => s.Id).ToHashSet();
+var reachable = elements.Select(s => s.Id).ToHashSet();
 bool changed;
 do
 {
